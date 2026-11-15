@@ -1,89 +1,77 @@
-# dsh-open-guard
+**简体中文** | [English](README.en.md)
 
-> **One line:** before the Harness host heap is blown apart by *opening several large sessions at once*, queue the ones that must wait and refuse the ones that cannot fit — so the app stays up instead of crashing.
+# dsh-open-guard · 会话打开护栏
 
-A DeepSeek Harness host plugin. It wraps `sessionQuery.observeSession`, the single choke point every cold session read goes through, and applies a remaining-memory budget there.
+> **一句话**：在宿主内存快被「同时打开多个会话」撑爆之前，把该排队的排队、该拒绝的拒绝，让应用活着而不是崩掉。
 
-## The problem
+DeepSeek Harness 宿主插件。它包住会话冷读的唯一入口 `sessionQuery.observeSession`，在那里做「剩余内存预算」准入。
 
-Opening a session decodes its whole event log into memory (measured retention is roughly 1.8–2.5× the decompressed text). The V8 heap ceiling is 4,192 MB and cannot be raised. Clicking two large sessions in a row stacks two materializations — measured: a 1.2 GB main session plus three large sessions reached 4,058 MB and crashed.
+## 它解决什么问题
 
-## What it does
+打开一个会话时，宿主会把该会话的整份事件日志解码进内存（实测持有量约为解压文本的 1.8–2.5 倍）。V8 堆上限 4,192 MB 无法调大。连续点开两个大会话，两次物化叠加就会 OOM（实测：1.2 GB 主会话 + 三个大会话 = 4,058 MB 崩溃）。
 
-1. **Estimate** what this open will cost — a learned measured value when the session was seen before; otherwise a heuristic from the compressed size, refined by measuring the text in a worker thread when the projection gets close to the limit.
-2. **Admit** when *used + inflight + this estimate + reserve ≤ limit*.
-3. **Queue or refuse** otherwise: if it fits alone, wait for inflight reads (cancellable, bounded by `maxWaitMs`); if it does not fit even alone, refuse and report the numbers.
+## 它做什么
 
-Live sessions are skipped entirely.
+1. **估算**：学过的会话用实测持有量；否则按压缩体积估算，接近上限时用 worker 线程精确量文本；
+2. **准入**：已用 + 在途 + 本次估算 + 预留 ≤ 上限 → 放行；
+3. **排队或拒绝**：放不下但单独放得下 → 等待在途完成（可取消，最长 `maxWaitMs`）；单独都放不下 → 拒绝并给出数字。
 
-## Normal-use impact
+已经打开的会话完全跳过。
 
-When the heap is healthy there is **no waiting, no refusal, no text scan** — one extra `stat` (~6 ms) and the same concurrency as without the plugin (verified: two concurrent small reads, `maxActive=2`). Queueing and refusals only appear in the situation that would otherwise crash.
+## 正常使用时的影响
 
-## Install
+内存水位正常时**不等待、不拒绝、不扫文本**：只多一次 `stat`（约 6 毫秒），并发行为与不装时一致（实测两个会话同时读，`maxActive=2`）。只有「再加一份物化就会超过上限」时才会排队或拒绝——那正是原本会崩溃的场景。
 
-Desktop app: **Settings → Plugins → Add plugin**, enter `dsh-open-guard`, install, then enable it.
+## 安装
 
-`dsh web`:
+桌面端：**设置 → 插件 → 添加插件**，输入 `dsh-open-guard`，安装并启用。
+
+`dsh web`：
 
 ```bash
-# from this repository (not published to npm yet)
+# 尚未发布到 npm，从仓库安装
 dsh plugin --profile web add github:deepseekmaid/dsh-open-guard
-
-# from a release tarball (no build step)
-dsh plugin --profile web add https://github.com/deepseekmaid/dsh-open-guard/releases/download/v0.2.0/dsh-open-guard-0.2.0.tgz
 ```
 
-Restart the host once. The bundle inserts its own row (`open-guard`), so no manual patch edit is required.
+安装后重启一次宿主。bundle 会自行插入 `open-guard` 行，无需手工改补丁。
 
-## Configuration
+## 配置
 
-Override the row in your profile patch (`~/.dsh/profiles/<name>/cordis.patch.yml`):
+在 profile 补丁（`~/.dsh/profiles/<name>/cordis.patch.yml`）里覆盖：
 
 ```yaml
 - id: open-guard
   config:
-    limitMB: 4192      # heap ceiling to budget against
-    reserveMB: 500     # headroom kept free; raise for a more conservative guard
-    maxWaitMs: 20000   # longest a queued open waits
+    limitMB: 4192      # 堆上限
+    reserveMB: 500     # 预留余量
+    maxWaitMs: 20000   # 排队最长等待
 ```
 
-Other keys: `ratio` (compressed → retained multiplier), `transient`, `textFactor`, `measureFromMB`, `measureNearRatio`, `learn`, `learnedPath`, `logPath`, `enabled`.
+其余可调项：`ratio`、`transient`、`textFactor`、`measureFromMB`、`measureNearRatio`、`learn`、`learnedPath`、`logPath`、`enabled`。
 
-## Logs
+## 日志
 
-Every decision is one JSON line in `~/.dsh/logs/open-guard.jsonl`:
+每次决策写一行 JSON 到 `~/.dsh/logs/open-guard.jsonl`，`decision` 取 `allow` / `refuse` / `refuse-after-wait`；学到的实测持有量存 `~/.dsh/storages/open-guard-learned.json`。
 
-```json
-{"t":"...","kind":"observe","sid":"8e2ae589","estMB":1,"source":"heuristic","usedMB":161,"deltaMB":3,"decision":"allow","waitedMs":0,"runMs":28}
-```
-
-`decision` is `allow`, `refuse`, or `refuse-after-wait`. Learned retained sizes live in `~/.dsh/storages/open-guard-learned.json`.
-
-## Tests
+## 测试
 
 ```bash
-node test/open-guard-test.mjs      # 8 checks: allow / concurrency / refuse / queue / cancel / live / uninstall / idempotence
-node test/measure-text-test.mjs    # worker text measurement
+node test/open-guard-test.mjs
+node test/measure-text-test.mjs
 ```
 
-## Verification
+## 验证
 
-Verified on the official `@deepseek-ai/dsh` `0.2.2-rc.1` in an isolated `DSH_HOME` (not a fork build):
+已在官方 `@deepseek-ai/dsh` `0.2.2-rc.1` 的隔离 `DSH_HOME` 中实测（非 fork 构建）：bundle 加载、`apply` 执行、三个宿主服务注入成功、`observeSession` 被替换，且一次真实冷读产生 `decision=allow`（`estMB=1`、`deltaMB=3`、28 ms）。
 
-- the bundle loaded and `apply` ran;
-- `ctx.inject(['sessionQuery','sessionPersistence','sessions'])` resolved — all three host services exist;
-- `observeSession` was replaced (`wrapped=true`);
-- one real cold read of a 98 KB session produced `decision=allow` (`estMB=1`, `deltaMB=3`, 28 ms).
+## 已知边界
 
-## Known limits
+- 全库搜索的索引对账不经过这个入口，索引不健康时不要跑全库搜索。
+- 拒绝会在 UI 显示为一条带数字的错误（受控失败，好于崩溃）。
+- 估算偏保守；worker 量文本失败时回退启发式。
+- 仅宿主侧：不解决 renderer 侧长对话的内存增长。
+- profile 级插件：升级 DSH 不会覆盖它，但宿主插件 API 变化后需要重测。
 
-- Full-library search reconciliation does **not** pass through this seam; avoid whole-library searches while indices are unhealthy.
-- A refusal surfaces in the UI as an error carrying the numbers; it is a controlled failure, not a crash.
-- Estimates are conservative by design; the worker measurement falls back to a heuristic when it fails.
-- Host-side only: it does not address renderer-side memory growth from very long conversations.
-- Profile-level plugin: upgrading DSH does not overwrite it, but re-test if the host plugin API changes.
-
-## License
+## 许可证
 
 MIT
