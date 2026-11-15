@@ -8,4 +8,4 @@
         enabled: true
         limitMB: 4192
         reserveMB: 500
-        maxWaitMs: 20000
+        maxWaitMs: 45000
