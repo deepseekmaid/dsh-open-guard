@@ -1,0 +1,11 @@
+# dsh-open-guard — admission control for cold session reads.
+# Applies as a bundle layer: it inserts one plugin row into the composed tree.
+# Config values below are the defaults; override them in your profile patch.
+- insert:
+    - id: open-guard
+      name: 'dsh-open-guard'
+      config:
+        enabled: true
+        limitMB: 4192
+        reserveMB: 500
+        maxWaitMs: 20000
