@@ -27,8 +27,7 @@ DeepSeek Harness 宿主插件。它包住会话冷读的唯一入口 `sessionQue
 `dsh web`：
 
 ```bash
-dsh plugin --profile web add dsh-open-guard
-# 或从仓库安装
+# 尚未发布到 npm，从仓库安装
 dsh plugin --profile web add github:deepseekmaid/dsh-open-guard
 ```
 

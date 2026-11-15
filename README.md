@@ -27,10 +27,7 @@ Desktop app: **Settings → Plugins → Add plugin**, enter `dsh-open-guard`, in
 `dsh web`:
 
 ```bash
-# from npm (if published)
-dsh plugin --profile web add dsh-open-guard
-
-# from this repository
+# from this repository (not published to npm yet)
 dsh plugin --profile web add github:deepseekmaid/dsh-open-guard
 
 # from a release tarball (no build step)
