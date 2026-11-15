@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Session Open Guard",
-    "description": "Admission control for cold session reads: queues or refuses opens that would exceed the host heap budget. No effect in normal use.",
+    "description": "Admission control during session loading: loads that would exceed the heap budget are queued or refused. No effect in normal use.",
     "detail": "README.en.md"
   }
 }

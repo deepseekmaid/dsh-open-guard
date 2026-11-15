@@ -62,7 +62,7 @@ dsh plugin --profile web add github:deepseekmaid/dsh-open-guard
 ## 测试
 
 ```bash
-node test/open-guard-test.mjs      # 8 项：放行、并发、拒绝、排队、取消、live 会话、卸载还原、重复加载幂等
+node test/open-guard-test.mjs      # 11 项：放行、并发、拒绝、排队、取消、live 会话、卸载还原、重复加载幂等、估算失败 fail-open、readSession 拦截、实测值学习
 node test/measure-text-test.mjs    # worker 文本体积测量
 ```
 

@@ -10,7 +10,7 @@ let seq = 0
 const learnedPath = () => path.join(TMP, 'learned-' + (++seq) + '.json')
 
 function makeHost({ sizes = {}, live = new Set(), heap = 1000, delayMs = 0, deltaMB = 0 } = {}) {
-  const state = { calls: 0, active: 0, maxActive: 0, stats: 0, heap }
+  const state = { calls: 0, active: 0, maxActive: 0, stats: 0, reads: 0, heap }
   const query = {
     async observeSession(sessionId, options = {}) {
       state.calls += 1
@@ -40,6 +40,10 @@ function makeHost({ sizes = {}, live = new Set(), heap = 1000, delayMs = 0, delt
       if (mb === undefined) throw new Error('missing stat')
       return { sizeBytes: mb * 1048576, location: { kind: 'jsonl', path: '/nonexistent/' + sessionId } }
     },
+  }
+  query.readSession = async (sessionId, options = {}) => {
+    state.reads = (state.reads || 0) + 1
+    return { id: sessionId, events: [] }
   }
   const sessions = { get(id) { return live.has(id) ? { id } : undefined } }
   const disposers = []
@@ -140,6 +144,40 @@ const settle = (p) => p.then(v => ({ v }), e => ({ e }))
   apply(host.ctx, { ...base, learnedPath: learnedPath(), heapMBProvider: () => host.state.heap })
   assert.equal(host.query.observeSession, once, '重复 apply 不应再包一层')
   console.log('PASS 重复 apply 幂等')
+}
+
+// 9) 估算失败时 fail-open：stat 抛错 → 直接读取，不拒绝
+{
+  const host = makeHost({ sizes: {}, heap: 3000 })
+  apply(host.ctx, { ...base, learnedPath: learnedPath(), heapMBProvider: () => host.state.heap })
+  const out = await host.query.observeSession('unknown')
+  assert.equal(out.id, 'unknown')
+  assert.equal(host.state.calls, 1, 'fail-open 应直接读取')
+  console.log('PASS 估算失败 fail-open')
+}
+
+// 10) readSession 同样被守卫包裹
+{
+  const host = makeHost({ sizes: { big: 184.2 }, heap: 3000 })
+  apply(host.ctx, { ...base, learnedPath: learnedPath(), heapMBProvider: () => host.state.heap })
+  assert.equal(host.state.reads, 0)
+  await assert.rejects(() => host.query.readSession('big'), (e) => e.code === 'OPEN_GUARD_REFUSED')
+  assert.equal(host.state.reads, 0, '被拒绝时不应执行读取')
+  console.log('PASS readSession 被包裹')
+}
+
+// 11) 实测值学习：第二次使用 learned-hold 估算
+{
+  const logPath = path.join(TMP, 'decisions.jsonl')
+  const host = makeHost({ sizes: { big: 100 }, heap: 1000, deltaMB: 800 })
+  apply(host.ctx, { ...base, logPath, learnedPath: learnedPath(), heapMBProvider: () => host.state.heap })
+  await host.query.observeSession('big')
+  const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  assert.equal(lines[0].source, 'heuristic')
+  await host.query.observeSession('big')
+  const lines2 = fs.readFileSync(logPath, 'utf8').trim().split('\n').map(l => JSON.parse(l))
+  assert.equal(lines2[1].source, 'learned-hold', '第二次应使用学到的实测值')
+  console.log('PASS 学习后使用 learned-hold')
 }
 
 fs.rmSync(TMP, { recursive: true, force: true })
