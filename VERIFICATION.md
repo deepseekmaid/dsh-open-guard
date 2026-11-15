@@ -30,7 +30,7 @@ Decision line written by the guard during that read:
 ## Unit tests
 
 ```
-node test/open-guard-test.mjs    -> 8/8 PASS
+node test/open-guard-test.mjs    -> 11/11 PASS
 node test/measure-text-test.mjs  -> PASS
 ```
 

@@ -1,7 +1,7 @@
 {
   "name": "dsh-open-guard",
   "version": "0.2.0",
-  "description": "Admission control for cold session reads in DeepSeek Harness: estimate, queue, or refuse an open that would blow the host heap budget. No effect in normal use.",
+  "description": "Admission control for session loading in DeepSeek Harness: estimates the memory cost of a cold session load and queues or refuses it when the heap budget would be exceeded.",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {

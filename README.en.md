@@ -62,7 +62,7 @@ Each admission decision writes one JSON line to `~/.dsh/logs/open-guard.jsonl`:
 ## Tests
 
 ```bash
-node test/open-guard-test.mjs      # 8 checks: allow, concurrency, refusal, queueing, cancellation, live sessions, unload restore, idempotent re-apply
+node test/open-guard-test.mjs      # 11 checks: allow, concurrency, refusal, queueing, cancellation, live sessions, unload restore, idempotent re-apply, fail-open on estimate error, readSession interception, measured-size learning
 node test/measure-text-test.mjs    # worker-based text size measurement
 ```
 
